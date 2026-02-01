@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { SourceInfo } from '../types';
+import { translations, Language } from '../i18n';
 
 interface SourcePickerProps {
   onSelect: (sourceId: string, includeAudio: boolean) => void;
   onClose: () => void;
+  uiLanguage: Language;
 }
 
-function SourcePicker({ onSelect, onClose }: SourcePickerProps) {
+function SourcePicker({ onSelect, onClose, uiLanguage }: SourcePickerProps) {
+  const t = translations[uiLanguage];
   const [sources, setSources] = useState<SourceInfo[]>([]);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [includeAudio, setIncludeAudio] = useState(true);
@@ -62,17 +65,17 @@ function SourcePicker({ onSelect, onClose }: SourcePickerProps) {
     <div className="modal-overlay" onClick={onClose} onKeyDown={handleKeyDown}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">Select Audio Source</h2>
+          <h2 className="modal-title">{t.sourcePicker.title}</h2>
           <button className="modal-close" onClick={onClose}>
             ×
           </button>
         </div>
 
         {loading ? (
-          <div className="transcript-placeholder">Loading available sources...</div>
+          <div className="transcript-placeholder">{uiLanguage === 'en' ? 'Loading available sources...' : 'Lade verfügbare Quellen...'}</div>
         ) : sources.length === 0 ? (
           <div className="transcript-placeholder">
-            No sources available. Make sure screen sharing is enabled.
+            {uiLanguage === 'en' ? 'No sources available. Make sure screen sharing is enabled.' : 'Keine Quellen verfügbar. Stelle sicher, dass Bildschirmfreigabe aktiviert ist.'}
           </div>
         ) : (
           <>
@@ -103,20 +106,20 @@ function SourcePicker({ onSelect, onClose }: SourcePickerProps) {
                 onChange={(e) => setIncludeAudio(e.target.checked)}
               />
               <label htmlFor="include-audio">
-                Include system audio (required for subtitles)
+                {uiLanguage === 'en' ? 'Include system audio (required for subtitles)' : 'Systemton einbeziehen (erforderlich für Untertitel)'}
               </label>
             </div>
 
             <div className="modal-actions">
               <button className="btn btn-primary" onClick={onClose} style={{ background: 'var(--bg-tertiary)' }}>
-                Cancel
+                {t.sourcePicker.cancel}
               </button>
               <button
                 className="btn btn-primary"
                 onClick={handleSelect}
                 disabled={!selectedSource}
               >
-                Start Capture
+                {t.sourcePicker.selectSource}
               </button>
             </div>
           </>

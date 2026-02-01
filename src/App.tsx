@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import SourcePicker from './components/SourcePicker';
 import SettingsPanel from './components/SettingsPanel';
 import { OverlaySettings, CaptureState, ConnectionStatus } from './types';
+import { translations, Language } from './i18n';
 
 function App() {
   // State
@@ -9,8 +10,9 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [serverUrl, setServerUrl] = useState('ws://localhost:9090');
-  const [language, setLanguage] = useState('en');
+  const [serverUrl] = useState('ws://localhost:9090'); // Fixed URL
+  const [uiLanguage, setUiLanguage] = useState<Language>('en');
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto');
   const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>({
     fontSize: 32,
     fontFamily: 'Segoe UI',
@@ -19,6 +21,9 @@ function App() {
     position: 'bottom',
     maxLines: 2,
   });
+
+  // Translation function
+  const t = translations[uiLanguage];
 
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
@@ -88,7 +93,7 @@ function App() {
         // Send initial configuration to WhisperLive server
         const config = {
           uid: `user_${Date.now()}`,
-          language: language,
+          language: transcriptionLanguage === 'auto' ? null : transcriptionLanguage,
           task: 'transcribe',
           model: 'small',
           use_vad: true,
@@ -159,7 +164,7 @@ function App() {
       setConnectionStatus('disconnected');
       alert(`Failed to start capture: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [serverUrl, language, captureState]);
+  }, [serverUrl, transcriptionLanguage, captureState]);
 
   // Start audio capture and send to WebSocket
   const startAudioCapture = useCallback((stream: MediaStream) => {
@@ -263,15 +268,15 @@ function App() {
   const getStatusInfo = () => {
     switch (captureState) {
       case 'idle':
-        return { text: 'Ready', color: 'var(--text-secondary)' };
+        return { text: t.status.idle, color: 'var(--text-secondary)' };
       case 'connecting':
-        return { text: 'Connecting...', color: 'var(--warning)' };
+        return { text: t.status.connecting, color: 'var(--warning)' };
       case 'capturing':
-        return { text: 'Transcribing', color: 'var(--success)' };
+        return { text: t.status.capturing, color: 'var(--success)' };
       case 'error':
-        return { text: 'Error', color: 'var(--error)' };
+        return { text: t.status.error, color: 'var(--error)' };
       default:
-        return { text: 'Unknown', color: 'var(--text-secondary)' };
+        return { text: t.status.idle, color: 'var(--text-secondary)' };
     }
   };
 
@@ -283,8 +288,8 @@ function App() {
       <header className="app-header">
         <img src="/icon.svg" alt="SubtitlesForAll" className="app-logo" />
         <div>
-          <h1 className="app-title">SubtitlesForAll</h1>
-          <p className="app-subtitle">Real-time subtitles for any audio</p>
+          <h1 className="app-title">{t.title}</h1>
+          <p className="app-subtitle">{uiLanguage === 'en' ? 'Real-time subtitles for any audio' : 'Echtzeit-Untertitel für jedes Audio'}</p>
         </div>
       </header>
 
@@ -294,7 +299,7 @@ function App() {
         <div className="panel status-panel">
           <h3 className="panel-title">📊 Status</h3>
           <div className="status-row">
-            <span className="status-label">Capture Status</span>
+            <span className="status-label">{uiLanguage === 'en' ? 'Capture Status' : 'Aufnahme-Status'}</span>
             <span className="status-value" style={{ color: statusInfo.color }}>
               <span className={`status-indicator ${connectionStatus}`} />
               {statusInfo.text}
@@ -303,72 +308,73 @@ function App() {
           <div className="status-row">
             <span className="status-label">WebSocket</span>
             <span className="status-value">
-              {connectionStatus === 'connected' ? '✅ Connected' : '❌ Disconnected'}
+              {connectionStatus === 'connected' ? (uiLanguage === 'en' ? '✅ Connected' : '✅ Verbunden') : (uiLanguage === 'en' ? '❌ Disconnected' : '❌ Getrennt')}
             </span>
+          </div>
+          <div className="status-row">
+            <span className="status-label">{t.settings.language}</span>
+            <select
+              value={uiLanguage}
+              onChange={(e) => setUiLanguage(e.target.value as Language)}
+              style={{ padding: '4px 8px', borderRadius: '4px' }}
+            >
+              <option value="en">English</option>
+              <option value="de">Deutsch</option>
+            </select>
           </div>
         </div>
 
-        {/* Server Configuration */}
+        {/* Transcription Language Settings */}
         <div className="panel">
-          <h3 className="panel-title">🔧 Server Configuration</h3>
-          <div className="server-config">
-            <div className="input-group">
-              <label>Server URL</label>
-              <input
-                type="text"
-                value={serverUrl}
-                onChange={(e) => setServerUrl(e.target.value)}
-                placeholder="ws://localhost:9090"
-                disabled={captureState === 'capturing'}
-              />
-            </div>
-            <div className="input-group">
-              <label>Language</label>
-              <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-                disabled={captureState === 'capturing'}
-              >
-                <option value="en">English</option>
-                <option value="de">German</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="it">Italian</option>
-                <option value="pt">Portuguese</option>
-              </select>
-            </div>
+          <h3 className="panel-title">🌍 {uiLanguage === 'en' ? 'Transcription Language' : 'Transkriptionssprache'}</h3>
+          <div className="status-row">
+            <span className="status-label">{t.settings.transcriptionLanguage}</span>
+            <select
+              value={transcriptionLanguage}
+              onChange={(e) => setTranscriptionLanguage(e.target.value)}
+              disabled={captureState === 'capturing'}
+              style={{ padding: '4px 8px', borderRadius: '4px' }}
+            >
+              <option value="auto">{uiLanguage === 'en' ? 'Auto (Automatic Detection)' : 'Auto (Automatische Erkennung)'}</option>
+              <option value="en">English</option>
+              <option value="de">Deutsch (German)</option>
+              <option value="es">Español (Spanish)</option>
+              <option value="fr">Français (French)</option>
+              <option value="it">Italiano (Italian)</option>
+              <option value="pt">Português (Portuguese)</option>
+            </select>
           </div>
         </div>
 
         {/* Capture Controls */}
         <div className="panel">
-          <h3 className="panel-title">🎤 Audio Capture</h3>
+          <h3 className="panel-title">🎤 {uiLanguage === 'en' ? 'Audio Capture' : 'Audio-Aufnahme'}</h3>
           {captureState === 'idle' || captureState === 'error' ? (
             <button className="btn btn-primary btn-full" onClick={handleStartCapture}>
-              🎬 Start Capture
+              🎬 {t.startCapture}
             </button>
           ) : (
             <button className="btn btn-danger btn-full" onClick={stopCapture}>
-              ⏹️ Stop Capture
+              ⏹️ {t.stopCapture}
             </button>
           )}
         </div>
 
         {/* Settings Panel */}
         <div className="panel">
-          <h3 className="panel-title">⚙️ Overlay Settings</h3>
-          <SettingsPanel settings={overlaySettings} onChange={handleSettingsChange} />
+          <h3 className="panel-title">⚙️ {t.settings.overlaySettings}</h3>
+          <SettingsPanel settings={overlaySettings} onChange={handleSettingsChange} uiLanguage={uiLanguage} />
         </div>
 
         {/* Transcript Display */}
         <div className="panel transcript-panel">
-          <h3 className="panel-title">📝 Live Transcript</h3>
+          <h3 className="panel-title">📝 {t.transcript.title}</h3>
           <div className="transcript-content">
             {transcript ? (
               transcript.trim()
             ) : (
               <div className="transcript-placeholder">
-                Transcription will appear here once you start capturing audio...
+                {t.transcript.empty}
               </div>
             )}
           </div>
@@ -380,6 +386,7 @@ function App() {
         <SourcePicker
           onSelect={handleSourceSelected}
           onClose={() => setShowSourcePicker(false)}
+          uiLanguage={uiLanguage}
         />
       )}
     </div>

@@ -1,8 +1,10 @@
 import { OverlaySettings } from '../types';
+import { translations, Language } from '../i18n';
 
 interface SettingsPanelProps {
   settings: OverlaySettings;
   onChange: (settings: Partial<OverlaySettings>) => void;
+  uiLanguage: Language;
 }
 
 const fontFamilies = [
@@ -17,7 +19,9 @@ const fontFamilies = [
   'Courier New',
 ];
 
-function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
+function SettingsPanel({ settings, onChange, uiLanguage }: SettingsPanelProps) {
+  const t = translations[uiLanguage];
+  
   // Convert hex + opacity to rgba
   const hexToRgba = (hex: string, opacity: number): string => {
     const r = parseInt(hex.slice(1, 3), 16);
@@ -47,7 +51,7 @@ function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
         {/* Font Size */}
         <div className="setting-group">
           <div className="setting-row">
-            <span className="setting-label">Font Size</span>
+            <span className="setting-label">{t.settings.fontSize}</span>
             <span className="setting-value">{settings.fontSize}px</span>
           </div>
           <input
@@ -61,7 +65,7 @@ function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
 
         {/* Font Family */}
         <div className="setting-group">
-          <span className="setting-label">Font Family</span>
+          <span className="setting-label">{t.settings.fontFamily}</span>
           <select
             value={settings.fontFamily}
             onChange={(e) => onChange({ fontFamily: e.target.value })}
@@ -76,7 +80,7 @@ function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
 
         {/* Text Color */}
         <div className="setting-group">
-          <span className="setting-label">Text Color</span>
+          <span className="setting-label">{t.settings.textColor}</span>
           <input
             type="color"
             value={settings.textColor}
@@ -86,7 +90,7 @@ function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
 
         {/* Background Color */}
         <div className="setting-group">
-          <span className="setting-label">Background Color</span>
+          <span className="setting-label">{t.settings.backgroundColor}</span>
           <input
             type="color"
             value={bgColorInfo.hex}
@@ -99,7 +103,7 @@ function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
         {/* Background Opacity */}
         <div className="setting-group">
           <div className="setting-row">
-            <span className="setting-label">Background Opacity</span>
+            <span className="setting-label">{t.settings.backgroundOpacity}</span>
             <span className="setting-value">{Math.round(bgColorInfo.opacity * 100)}%</span>
           </div>
           <input
@@ -115,20 +119,20 @@ function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
 
         {/* Position */}
         <div className="setting-group">
-          <span className="setting-label">Position</span>
+          <span className="setting-label">{t.settings.position}</span>
           <select
             value={settings.position}
             onChange={(e) => onChange({ position: e.target.value as 'top' | 'bottom' })}
           >
-            <option value="bottom">Bottom</option>
-            <option value="top">Top</option>
+            <option value="bottom">{t.settings.positionBottom}</option>
+            <option value="top">{t.settings.positionTop}</option>
           </select>
         </div>
       </div>
 
       {/* Preview - full width */}
       <div className="setting-group" style={{ marginTop: '8px' }}>
-        <span className="setting-label">Preview</span>
+        <span className="setting-label">{uiLanguage === 'en' ? 'Preview' : 'Vorschau'}</span>
         <div
           style={{
             marginTop: '8px',
@@ -141,7 +145,7 @@ function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
             backgroundColor: settings.backgroundColor,
           }}
         >
-          Sample subtitle text
+          {uiLanguage === 'en' ? 'Sample subtitle text' : 'Beispiel-Untertiteltext'}
         </div>
       </div>
     </div>
