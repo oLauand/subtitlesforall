@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Subtitle Overlay</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html, body {
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        font-family: 'Segoe UI', Arial, sans-serif;
+      }
+
+      #overlay-root {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 50px;
+      }
+
+      .subtitle-container {
+        text-align: center;
+        transition: opacity 0.3s ease;
+      }
+
+      .subtitle-text {
+        display: inline-block;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 32px;
+        font-weight: 600;
+        color: #ffffff;
+        background-color: rgba(0, 0, 0, 0.75);
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        max-width: 100%;
+        word-wrap: break-word;
+        line-height: 1.4;
+      }
+
+      .subtitle-text.hidden {
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="overlay-root">
+      <div class="subtitle-container">
+        <span id="subtitle-text" class="subtitle-text hidden"></span>
+      </div>
+    </div>
+
+    <script>
+      const subtitleElement = document.getElementById('subtitle-text');
+      let fadeTimeout = null;
+      let currentSettings = {
+        fontSize: 32,
+        fontFamily: 'Segoe UI',
+        textColor: '#ffffff',
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        maxLines: 2,
+      };
+
+      // Apply settings to subtitle element
+      function applySettings(settings) {
+        currentSettings = { ...currentSettings, ...settings };
+        
+        subtitleElement.style.fontSize = `${currentSettings.fontSize}px`;
+        subtitleElement.style.fontFamily = currentSettings.fontFamily;
+        subtitleElement.style.color = currentSettings.textColor;
+        subtitleElement.style.backgroundColor = currentSettings.backgroundColor;
+      }
+
+      // Show subtitle with auto-fade
+      function showSubtitle(text) {
+        if (fadeTimeout) {
+          clearTimeout(fadeTimeout);
+          fadeTimeout = null;
+        }
+
+        if (!text || text.trim() === '') {
+          subtitleElement.classList.add('hidden');
+          subtitleElement.textContent = '';
+          return;
+        }
+
+        // Limit to last N words based on maxLines
+        const words = text.trim().split(/\s+/);
+        const maxWords = currentSettings.maxLines * 8; // Roughly 8 words per line
+        const displayText = words.slice(-maxWords).join(' ');
+
+        subtitleElement.textContent = displayText;
+        subtitleElement.classList.remove('hidden');
+
+        // Auto-fade after 5 seconds of no new text
+        fadeTimeout = setTimeout(() => {
+          subtitleElement.classList.add('hidden');
+        }, 5000);
+      }
+
+      // Listen for subtitle updates from main process
+      if (window.electronAPI) {
+        window.electronAPI.onSubtitleUpdate((text) => {
+          showSubtitle(text);
+        });
+
+        window.electronAPI.onSettingsUpdate((settings) => {
+          applySettings(settings);
+        });
+      }
+
+      // Apply initial settings
+      applySettings(currentSettings);
+    </script>
+  </body>
+</html>

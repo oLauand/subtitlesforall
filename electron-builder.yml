@@ -1,0 +1,38 @@
+appId: com.subtitlesforall.app
+productName: SubtitlesForAll
+
+directories:
+  output: release
+  buildResources: public
+
+files:
+  - dist/**/*
+  - electron/**/*
+  - public/overlay.html
+
+extraResources:
+  - from: public/overlay.html
+    to: overlay.html
+
+win:
+  target:
+    - nsis
+  icon: public/icon.svg
+
+mac:
+  target:
+    - dmg
+  icon: public/icon.svg
+  category: public.app-category.utilities
+
+linux:
+  target:
+    - AppImage
+  icon: public/icon.svg
+  category: Utility
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
