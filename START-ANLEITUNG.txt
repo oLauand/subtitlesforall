@@ -1,0 +1,59 @@
+===============================================
+  SubtitlesForAll - Start Anleitung
+===============================================
+
+SO STARTEST DU DIE ANWENDUNG:
+-----------------------------
+
+1. Öffne 2 PowerShell/Terminal Fenster
+
+2. TERMINAL 1 - Server starten:
+   cd C:\Users\49152\projects\whisper.cpp-1\subtitles-for-all
+   python simple_server.py --port 9090 --model base
+
+3. TERMINAL 2 - App starten:
+   cd C:\Users\49152\projects\whisper.cpp-1\subtitles-for-all
+   npm run electron:dev
+
+4. In der App:
+   - Klicke "Start Capture"
+   - Wähle Audio-Quelle (z.B. Desktop Audio)
+   - Wähle Modell aus Dropdown:
+     * ⚡ Tiny Q5_1 (16 MB) - Schnellste
+     * ⚡ Base Q5_1 (31 MB) - Gute Balance
+     * base (74 MB) - Beste Qualität
+
+VERFÜGBARE MODELLE:
+-------------------
+- tiny-q5_1      (16 MB) - Quantisiert, sehr schnell
+- tiny           (39 MB) - Schnell
+- base-q5_1      (31 MB) - Quantisiert, gute Performance
+- base           (74 MB) - Gute Qualität
+- small          (244 MB) - Bessere Qualität
+- medium         (769 MB) - Hohe Qualität
+
+MODELL IM TERMINAL ÄNDERN:
+--------------------------
+python simple_server.py --port 9090 --model tiny-q5_1
+python simple_server.py --port 9090 --model base-q5_1
+python simple_server.py --port 9090 --model base
+
+PROBLEME?
+---------
+- Port 9090 belegt? 
+  -> Prozess beenden: Get-Process python | Stop-Process -Force
+
+- Server startet nicht?
+  -> Pakete installieren: pip install websockets numpy faster-whisper
+
+- App startet nicht?
+  -> Dependencies: npm install
+
+VAD (Voice Activity Detection):
+-------------------------------
+✓ Ist bereits aktiviert!
+- Filtert Stille automatisch
+- Bessere Transkription
+- Keine Änderung nötig
+
+===============================================

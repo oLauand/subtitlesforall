@@ -13,6 +13,9 @@ function App() {
   const [serverUrl] = useState('ws://localhost:9090'); // Fixed URL
   const [uiLanguage, setUiLanguage] = useState<Language>('en');
   const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto');
+  const [selectedModel, setSelectedModel] = useState('base.en');
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelLoadProgress, setModelLoadProgress] = useState(0);
   const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>({
     fontSize: 32,
     fontFamily: 'Segoe UI',
@@ -45,6 +48,21 @@ function App() {
       window.electronAPI.updateOverlaySettings(overlaySettings);
     }
   }, [overlaySettings]);
+
+  // Handle model change while connected
+  useEffect(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && connectionStatus === 'connected') {
+      // Send model change request to server
+      const config = {
+        uid: `user_${Date.now()}`,
+        language: transcriptionLanguage === 'auto' ? null : transcriptionLanguage,
+        task: 'transcribe',
+        model: selectedModel,
+        use_vad: true,
+      };
+      wsRef.current.send(JSON.stringify(config));
+    }
+  }, [selectedModel, transcriptionLanguage, connectionStatus]);
 
   // Handle source selection and start capture
   const handleSourceSelected = useCallback(async (sourceId: string, _includeAudio: boolean) => {
@@ -95,7 +113,7 @@ function App() {
           uid: `user_${Date.now()}`,
           language: transcriptionLanguage === 'auto' ? null : transcriptionLanguage,
           task: 'transcribe',
-          model: 'small',
+          model: selectedModel,
           use_vad: true,
         };
         ws.send(JSON.stringify(config));
@@ -106,8 +124,22 @@ function App() {
           const data = JSON.parse(event.data);
           console.log('Server message:', data);
 
+          // Handle model loading progress
+          if (data.type === 'model_loading') {
+            setModelLoading(true);
+            setModelLoadProgress(data.progress || 0);
+            return;
+          }
+
+          if (data.type === 'model_ready') {
+            setModelLoading(false);
+            setModelLoadProgress(100);
+            return;
+          }
+
           if (data.message === 'SERVER_READY' || data.status === 'ready') {
             console.log('Server is ready, starting audio capture...');
+            setModelLoading(false);
             startAudioCapture(stream);
             setCaptureState('capturing');
           }
@@ -322,6 +354,78 @@ function App() {
               <option value="de">Deutsch</option>
             </select>
           </div>
+        </div>
+
+        {/* Model Selection */}
+        <div className="panel">
+          <h3 className="panel-title">🤖 {t.settings.model}</h3>
+          <div className="status-row">
+            <span className="status-label">{t.settings.model}</span>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              disabled={captureState === 'capturing' || modelLoading}
+              style={{ padding: '4px 8px', borderRadius: '4px' }}
+            >
+              <option value="tiny-q5_1">⚡ Tiny Q5_1 (16 MB) - {uiLanguage === 'en' ? 'Quantized, very fast, multilingual' : 'Quantisiert, sehr schnell, mehrsprachig'}</option>
+              <option value="tiny.en">Tiny.en (39 MB) - {uiLanguage === 'en' ? 'Fastest, English only' : 'Am schnellsten, nur Englisch'}</option>
+              <option value="tiny">Tiny (39 MB) - {uiLanguage === 'en' ? 'Fast, multilingual' : 'Schnell, mehrsprachig'}</option>
+              <option value="base-q5_1">⚡ Base Q5_1 (31 MB) - {uiLanguage === 'en' ? 'Quantized, faster, multilingual' : 'Quantisiert, schneller, mehrsprachig'}</option>
+              <option value="base.en">Base.en (74 MB) - {uiLanguage === 'en' ? 'Good quality, English only' : 'Gute Qualität, nur Englisch'}</option>
+              <option value="base">Base (74 MB) - {uiLanguage === 'en' ? 'Good quality, multilingual' : 'Gute Qualität, mehrsprachig'}</option>
+              <option value="small.en">Small.en (244 MB) - {uiLanguage === 'en' ? 'Better quality, English only' : 'Bessere Qualität, nur Englisch'}</option>
+              <option value="small">Small (244 MB) - {uiLanguage === 'en' ? 'Better quality, multilingual' : 'Bessere Qualität, mehrsprachig'}</option>
+              <option value="medium.en">Medium.en (769 MB) - {uiLanguage === 'en' ? 'High quality, English only' : 'Hohe Qualität, nur Englisch'}</option>
+              <option value="medium">Medium (769 MB) - {uiLanguage === 'en' ? 'High quality, multilingual' : 'Hohe Qualität, mehrsprachig'}</option>
+              <option value="large-v3">Large-v3 (1550 MB) - {uiLanguage === 'en' ? 'Best quality, multilingual' : 'Beste Qualität, mehrsprachig'}</option>
+            </select>
+          </div>
+          {modelLoading && (
+            <div style={{ marginTop: '12px' }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                marginBottom: '8px',
+                fontSize: '14px',
+                color: '#888'
+              }}>
+                <div className="spinner" style={{ 
+                  width: '16px', 
+                  height: '16px',
+                  border: '2px solid #333',
+                  borderTopColor: '#00a8ff',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }}></div>
+                <span>{t.settings.modelLoading}</span>
+              </div>
+              <div style={{
+                width: '100%',
+                height: '8px',
+                backgroundColor: '#2a2a2a',
+                borderRadius: '4px',
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  width: `${modelLoadProgress}%`,
+                  height: '100%',
+                  backgroundColor: '#00a8ff',
+                  transition: 'width 0.3s ease'
+                }}></div>
+              </div>
+              {modelLoadProgress > 0 && (
+                <div style={{ 
+                  marginTop: '4px', 
+                  fontSize: '12px', 
+                  color: '#666',
+                  textAlign: 'right'
+                }}>
+                  {modelLoadProgress.toFixed(0)}%
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Transcription Language Settings */}

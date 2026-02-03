@@ -64,6 +64,33 @@ class WhisperTranscriber:
         self.audio_buffer = []
         self.sample_rate = 16000
         self.min_audio_length = 1.0  # Minimum seconds of audio before processing
+        self.current_model_name = None
+        
+    def set_model(self, model_name: str) -> str:
+        """Change the model and return the full path."""
+        # Map model names to file paths
+        base_path = Path(__file__).parent.parent / "models"
+        
+        # Handle quantized models with special naming
+        if model_name == "tiny-q5_1":
+            model_file = "ggml-tiny-q5_1.bin"
+        elif model_name == "base-q5_1":
+            model_file = "ggml-base-q5_1.bin"
+        else:
+            model_file = f"ggml-{model_name}.bin"
+        
+        model_path = base_path / model_file
+        
+        if model_path.exists():
+            self.model_path = str(model_path)
+            self.current_model_name = model_name
+            print(f"✓ Model set to: {model_file}")
+            return str(model_path)
+        else:
+            print(f"⚠ Model file not found: {model_path}, using default")
+        
+        # Fallback to default
+        return self.model_path
         
     async def transcribe_audio(self, audio_data: np.ndarray) -> str:
         """Transcribe audio using whisper.cpp server."""
@@ -187,6 +214,7 @@ class WebSocketServer:
         
         audio_buffer = []
         config = {}
+        current_model = None
         
         try:
             # Send server ready message
@@ -201,6 +229,40 @@ class WebSocketServer:
                     try:
                         config = json.loads(message)
                         print(f"Client {client_id} config: {config}")
+                        
+                        # Handle model change request
+                        if 'model' in config and config['model'] != current_model:
+                            requested_model = config['model']
+                            print(f"Client {client_id} requesting model change to: {requested_model}")
+                            
+                            # Notify client that model is loading
+                            await websocket.send(json.dumps({
+                                "type": "model_loading",
+                                "model": requested_model,
+                                "progress": 0
+                            }))
+                            
+                            # Simulate loading progress (in real scenario, this would track actual model load)
+                            for progress in [20, 40, 60, 80]:
+                                await asyncio.sleep(0.2)
+                                await websocket.send(json.dumps({
+                                    "type": "model_loading",
+                                    "model": requested_model,
+                                    "progress": progress
+                                }))
+                            
+                            # Change the model
+                            new_model_path = self.transcriber.set_model(requested_model)
+                            current_model = requested_model
+                            print(f"Model changed to: {new_model_path}")
+                            
+                            # Notify client that model is ready
+                            await websocket.send(json.dumps({
+                                "type": "model_ready",
+                                "model": requested_model,
+                                "progress": 100
+                            }))
+                            
                     except json.JSONDecodeError:
                         pass
                         

@@ -100,16 +100,20 @@ class SimpleTranscriptionServer:
                         
                 elif isinstance(message, bytes):
                     # Binary audio data
+                    print(f"Received audio chunk: {len(message)} bytes")
                     audio_chunk = np.frombuffer(message, dtype=np.float32)
                     audio_buffer = np.concatenate([audio_buffer, audio_chunk])
+                    print(f"Buffer size: {len(audio_buffer)} samples ({len(audio_buffer)/16000:.2f} seconds)")
                     
                     # Transcribe when we have enough audio (2 seconds at 16kHz)
                     if len(audio_buffer) >= 32000:
+                        print("Transcribing audio...")
                         # Convert to int16
                         audio_int16 = (audio_buffer * 32767).astype(np.int16)
                         
                         # Transcribe
                         text = self.transcribe_audio(audio_int16, config["language"])
+                        print(f"Transcription result: '{text}'")
                         
                         if text:
                             # Send transcription result
@@ -155,10 +159,21 @@ def main():
     parser = argparse.ArgumentParser(description="Simple Transcription Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=9090, help="Port to listen on")
-    parser.add_argument("--model", default="base", choices=["tiny", "base", "small", "medium", "large"], 
-                        help="Whisper model size")
+    parser.add_argument("--model", default="base", 
+                        help="Whisper model size (tiny, base, base-q5_1, small, medium, large)")
     
     args = parser.parse_args()
+    
+    # Handle quantized model names - map to corresponding base model for faster-whisper
+    model_name = args.model
+    if model_name == "tiny-q5_1":
+        print("Note: Quantized tiny model uses tiny model with faster-whisper")
+        model_name = "tiny"
+    elif model_name == "base-q5_1":
+        print("Note: Quantized base model uses base model with faster-whisper")
+        model_name = "base"
+    
+    args.model = model_name
     
     server = SimpleTranscriptionServer(args.host, args.port, args.model)
     asyncio.run(server.start())
