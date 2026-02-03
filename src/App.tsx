@@ -4,8 +4,8 @@ import SettingsPanel from './components/SettingsPanel';
 import { OverlaySettings, CaptureState, ConnectionStatus } from './types';
 import { translations, Language } from './i18n';
 
-// Backend types
-type BackendType = 'whisper' | 'moonshine';
+// Backend types - now with 3 options
+type BackendType = 'whisper-python' | 'whisper-cpp' | 'moonshine';
 
 function App() {
   // State
@@ -13,10 +13,10 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [selectedBackend, setSelectedBackend] = useState<BackendType>('whisper');
+  const [selectedBackend, setSelectedBackend] = useState<BackendType>('whisper-cpp');
   const [uiLanguage, setUiLanguage] = useState<Language>('en');
   const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto');
-  const [selectedModel, setSelectedModel] = useState('base.en');
+  const [selectedModel, setSelectedModel] = useState('base');
   const [modelLoading, setModelLoading] = useState(false);
   const [modelLoadProgress, setModelLoadProgress] = useState(0);
   const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>({
@@ -29,7 +29,15 @@ function App() {
   });
 
   // Server URLs based on backend
-  const serverUrl = selectedBackend === 'whisper' ? 'ws://localhost:9090' : 'ws://localhost:9091';
+  const getServerUrl = () => {
+    switch (selectedBackend) {
+      case 'whisper-python': return 'ws://localhost:9090';
+      case 'whisper-cpp': return 'ws://localhost:9092';
+      case 'moonshine': return 'ws://localhost:9091';
+      default: return 'ws://localhost:9092';
+    }
+  };
+  const serverUrl = getServerUrl();
 
   // Translation function
   const t = translations[uiLanguage];
@@ -59,8 +67,10 @@ function App() {
   useEffect(() => {
     if (selectedBackend === 'moonshine') {
       setSelectedModel('moonshine/base');
+    } else if (selectedBackend === 'whisper-cpp') {
+      setSelectedModel('base-q5_1');  // Use quantized model (locally available)
     } else {
-      setSelectedModel('base.en');
+      setSelectedModel('base');
     }
   }, [selectedBackend]);
 
@@ -382,25 +392,30 @@ function App() {
               disabled={captureState === 'capturing'}
               style={{ padding: '4px 8px', borderRadius: '4px' }}
             >
-              <option value="whisper">🎤 Whisper - {uiLanguage === 'en' ? 'Reliable, many models' : 'Zuverlässig, viele Modelle'}</option>
+              <option value="whisper-cpp">⚡ Whisper.cpp - {uiLanguage === 'en' ? 'C++ optimized, FAST!' : 'C++ optimiert, SCHNELL!'}</option>
               <option value="moonshine">🌙 Moonshine - {uiLanguage === 'en' ? '5-15x FASTER!' : '5-15x SCHNELLER!'}</option>
+              <option value="whisper-python">🐍 Whisper Python - {uiLanguage === 'en' ? 'Original, reliable' : 'Original, zuverlässig'}</option>
             </select>
           </div>
           <div style={{ 
             marginTop: '8px', 
             fontSize: '12px', 
-            color: selectedBackend === 'moonshine' ? '#4ade80' : '#888',
+            color: selectedBackend === 'moonshine' ? '#4ade80' : selectedBackend === 'whisper-cpp' ? '#60a5fa' : '#888',
             padding: '8px',
-            backgroundColor: selectedBackend === 'moonshine' ? 'rgba(74, 222, 128, 0.1)' : 'transparent',
+            backgroundColor: selectedBackend === 'moonshine' ? 'rgba(74, 222, 128, 0.1)' : selectedBackend === 'whisper-cpp' ? 'rgba(96, 165, 250, 0.1)' : 'transparent',
             borderRadius: '4px'
           }}>
             {selectedBackend === 'moonshine' 
               ? (uiLanguage === 'en' 
-                  ? '⚡ Moonshine processes audio 5-15x faster than Whisper!' 
-                  : '⚡ Moonshine verarbeitet Audio 5-15x schneller als Whisper!')
+                  ? '⚡ Moonshine: ONNX optimized, 5-15x faster than Python Whisper!' 
+                  : '⚡ Moonshine: ONNX optimiert, 5-15x schneller als Python Whisper!')
+              : selectedBackend === 'whisper-cpp'
+              ? (uiLanguage === 'en'
+                  ? '🔥 Whisper.cpp: C++ native, 2-4x faster than Python, with quantized models!'
+                  : '🔥 Whisper.cpp: C++ nativ, 2-4x schneller als Python, mit quantisierten Modellen!')
               : (uiLanguage === 'en'
-                  ? 'Whisper offers many model sizes and languages'
-                  : 'Whisper bietet viele Modellgrößen und Sprachen')}
+                  ? '🐍 Original Python Whisper - most compatible, baseline speed'
+                  : '🐍 Original Python Whisper - am kompatibelsten, Basisgeschwindigkeit')}
           </div>
           <div style={{ marginTop: '8px', fontSize: '11px', color: '#666' }}>
             {uiLanguage === 'en' 
@@ -414,17 +429,15 @@ function App() {
           <h3 className="panel-title">🤖 {t.settings.model}</h3>
           <div className="status-row">
             <span className="status-label">{t.settings.model}</span>
-            {selectedBackend === 'whisper' ? (
+            {selectedBackend === 'whisper-python' ? (
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
                 disabled={captureState === 'capturing' || modelLoading}
                 style={{ padding: '4px 8px', borderRadius: '4px' }}
               >
-                <option value="tiny-q5_1">⚡ Tiny Q5_1 (16 MB) - {uiLanguage === 'en' ? 'Quantized, very fast' : 'Quantisiert, sehr schnell'}</option>
                 <option value="tiny.en">Tiny.en (39 MB) - {uiLanguage === 'en' ? 'Fast, English only' : 'Schnell, nur Englisch'}</option>
                 <option value="tiny">Tiny (39 MB) - {uiLanguage === 'en' ? 'Fast, multilingual' : 'Schnell, mehrsprachig'}</option>
-                <option value="base-q5_1">⚡ Base Q5_1 (31 MB) - {uiLanguage === 'en' ? 'Quantized, faster' : 'Quantisiert, schneller'}</option>
                 <option value="base.en">Base.en (74 MB) - {uiLanguage === 'en' ? 'Good quality, English' : 'Gute Qualität, Englisch'}</option>
                 <option value="base">Base (74 MB) - {uiLanguage === 'en' ? 'Good quality, multilingual' : 'Gute Qualität, mehrsprachig'}</option>
                 <option value="small.en">Small.en (244 MB) - {uiLanguage === 'en' ? 'Better quality, English' : 'Bessere Qualität, Englisch'}</option>
@@ -433,6 +446,32 @@ function App() {
                 <option value="medium">Medium (769 MB) - {uiLanguage === 'en' ? 'High quality, multilingual' : 'Hohe Qualität, mehrsprachig'}</option>
                 <option value="large-v3">Large-v3 (1550 MB) - {uiLanguage === 'en' ? 'Best quality' : 'Beste Qualität'}</option>
               </select>
+            ) : selectedBackend === 'whisper-cpp' ? (
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                disabled={captureState === 'capturing' || modelLoading}
+                style={{ padding: '4px 8px', borderRadius: '4px' }}
+              >
+                <optgroup label={uiLanguage === 'en' ? '⚡ Quantized (Fastest)' : '⚡ Quantisiert (Schnellste)'}>
+                  <option value="tiny-q5_1">⚡ Tiny Q5_1 (16 MB) - {uiLanguage === 'en' ? 'Ultra-fast' : 'Ultra-schnell'}</option>
+                  <option value="base-q5_1">⚡ Base Q5_1 (31 MB) - {uiLanguage === 'en' ? 'Fast + good quality' : 'Schnell + gute Qualität'}</option>
+                  <option value="small-q5_1">⚡ Small Q5_1 (93 MB) - {uiLanguage === 'en' ? 'Better quality' : 'Bessere Qualität'}</option>
+                  <option value="medium-q5_1">⚡ Medium Q5_1 (309 MB) - {uiLanguage === 'en' ? 'High quality' : 'Hohe Qualität'}</option>
+                  <option value="large-v3-q5_0">⚡ Large-v3 Q5_0 (618 MB) - {uiLanguage === 'en' ? 'Best quality quantized' : 'Beste Qualität quantisiert'}</option>
+                  <option value="large-v3-turbo-q5_0">⚡ Large-v3-Turbo Q5_0 (394 MB) - {uiLanguage === 'en' ? 'Fast + best quality' : 'Schnell + beste Qualität'}</option>
+                </optgroup>
+                <optgroup label={uiLanguage === 'en' ? '🎯 Standard (Full precision)' : '🎯 Standard (Volle Präzision)'}>
+                  <option value="tiny">Tiny (39 MB) - {uiLanguage === 'en' ? 'Fast' : 'Schnell'}</option>
+                  <option value="tiny.en">Tiny.en (39 MB) - {uiLanguage === 'en' ? 'Fast, English' : 'Schnell, Englisch'}</option>
+                  <option value="base">Base (74 MB) - {uiLanguage === 'en' ? 'Good quality' : 'Gute Qualität'}</option>
+                  <option value="base.en">Base.en (74 MB) - {uiLanguage === 'en' ? 'Good, English' : 'Gut, Englisch'}</option>
+                  <option value="small">Small (244 MB) - {uiLanguage === 'en' ? 'Better quality' : 'Bessere Qualität'}</option>
+                  <option value="medium">Medium (769 MB) - {uiLanguage === 'en' ? 'High quality' : 'Hohe Qualität'}</option>
+                  <option value="large-v3">Large-v3 (1550 MB) - {uiLanguage === 'en' ? 'Best quality' : 'Beste Qualität'}</option>
+                  <option value="large-v3-turbo">Large-v3-Turbo (809 MB) - {uiLanguage === 'en' ? 'Fast + best' : 'Schnell + beste'}</option>
+                </optgroup>
+              </select>
             ) : (
               <select
                 value={selectedModel}
@@ -440,15 +479,19 @@ function App() {
                 disabled={captureState === 'capturing' || modelLoading}
                 style={{ padding: '4px 8px', borderRadius: '4px' }}
               >
-                <option value="moonshine/tiny">🌙 Tiny (27 MB) - {uiLanguage === 'en' ? 'Ultra-fast, English' : 'Ultra-schnell, Englisch'}</option>
-                <option value="moonshine/base">🌙 Base (62 MB) - {uiLanguage === 'en' ? 'Best quality, English' : 'Beste Qualität, Englisch'}</option>
-                <option value="moonshine/tiny-ar">🌙 Tiny-AR (27 MB) - {uiLanguage === 'en' ? 'Arabic' : 'Arabisch'}</option>
-                <option value="moonshine/tiny-zh">🌙 Tiny-ZH (27 MB) - {uiLanguage === 'en' ? 'Chinese' : 'Chinesisch'}</option>
-                <option value="moonshine/tiny-ja">🌙 Tiny-JA (27 MB) - {uiLanguage === 'en' ? 'Japanese' : 'Japanisch'}</option>
-                <option value="moonshine/tiny-ko">🌙 Tiny-KO (27 MB) - {uiLanguage === 'en' ? 'Korean' : 'Koreanisch'}</option>
-                <option value="moonshine/tiny-uk">🌙 Tiny-UK (27 MB) - {uiLanguage === 'en' ? 'Ukrainian' : 'Ukrainisch'}</option>
-                <option value="moonshine/tiny-vi">🌙 Tiny-VI (27 MB) - {uiLanguage === 'en' ? 'Vietnamese' : 'Vietnamesisch'}</option>
-                <option value="moonshine/base-es">🌙 Base-ES (62 MB) - {uiLanguage === 'en' ? 'Spanish' : 'Spanisch'}</option>
+                <optgroup label={uiLanguage === 'en' ? '🌙 English (Fastest)' : '🌙 Englisch (Schnellste)'}>
+                  <option value="moonshine/tiny">🌙 Tiny (27 MB) - {uiLanguage === 'en' ? 'Ultra-fast' : 'Ultra-schnell'}</option>
+                  <option value="moonshine/base">🌙 Base (62 MB) - {uiLanguage === 'en' ? 'Best quality' : 'Beste Qualität'}</option>
+                </optgroup>
+                <optgroup label={uiLanguage === 'en' ? '🌍 Other Languages' : '🌍 Andere Sprachen'}>
+                  <option value="moonshine/tiny-ar">🌙 Tiny-AR - {uiLanguage === 'en' ? 'Arabic' : 'Arabisch'}</option>
+                  <option value="moonshine/tiny-zh">🌙 Tiny-ZH - {uiLanguage === 'en' ? 'Chinese' : 'Chinesisch'}</option>
+                  <option value="moonshine/tiny-ja">🌙 Tiny-JA - {uiLanguage === 'en' ? 'Japanese' : 'Japanisch'}</option>
+                  <option value="moonshine/tiny-ko">🌙 Tiny-KO - {uiLanguage === 'en' ? 'Korean' : 'Koreanisch'}</option>
+                  <option value="moonshine/tiny-uk">🌙 Tiny-UK - {uiLanguage === 'en' ? 'Ukrainian' : 'Ukrainisch'}</option>
+                  <option value="moonshine/tiny-vi">🌙 Tiny-VI - {uiLanguage === 'en' ? 'Vietnamese' : 'Vietnamesisch'}</option>
+                  <option value="moonshine/base-es">🌙 Base-ES - {uiLanguage === 'en' ? 'Spanish' : 'Spanisch'}</option>
+                </optgroup>
               </select>
             )}
           </div>

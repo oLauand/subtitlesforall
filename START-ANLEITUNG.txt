@@ -2,8 +2,26 @@
   SubtitlesForAll - Start Anleitung
 ===============================================
 
-BEIDE BACKENDS STARTEN (Empfohlen):
------------------------------------
+ELECTRON APP (Alle Backends automatisch starten):
+-------------------------------------------------
+
+1. Terminal öffnen:
+   cd C:\Users\49152\projects\whisper.cpp-1\subtitles-for-all
+   npx electron .
+
+2. Die App startet automatisch ALLE Backend-Server:
+   - Whisper.cpp (Port 9092) - base-q5_1 Modell
+   - Moonshine (Port 9091) - moonshine/base
+   - Whisper Python (Port 9090) - base Modell
+
+3. In der App:
+   - Wähle Backend: 🌙 Moonshine, 🎤 Whisper Python, oder whisper.cpp
+   - Klicke "Start Capture"
+   - Wähle Audio-Quelle (z.B. Desktop Audio)
+   - Wähle Modell aus Dropdown
+
+MANUELLE BACKENDS (Entwicklungsmodus):
+--------------------------------------
 
 1. Öffne 3 PowerShell/Terminal Fenster
 
@@ -15,7 +33,11 @@ BEIDE BACKENDS STARTEN (Empfohlen):
    cd C:\Users\49152\projects\whisper.cpp-1\subtitles-for-all
    python moonshine_server.py --port 9091 --model moonshine/base
 
-4. TERMINAL 3 - App starten:
+4. TERMINAL 3 - Whisper.cpp Server (Port 9092):
+   cd C:\Users\49152\projects\whisper.cpp-1\subtitles-for-all
+   python whispercpp_server.py --port 9092 --model base-q5_1
+
+5. TERMINAL 4 - App starten:
    cd C:\Users\49152\projects\whisper.cpp-1\subtitles-for-all
    npm run electron:dev
 
@@ -25,24 +47,37 @@ BEIDE BACKENDS STARTEN (Empfohlen):
    - Wähle Audio-Quelle (z.B. Desktop Audio)
    - Wähle Modell aus Dropdown
 
-NUR WHISPER (Original):
------------------------
+NUR WHISPER.CPP (Schnell & Lokal):
+----------------------------------
+Terminal 1: python whispercpp_server.py --port 9092 --model base-q5_1
+Terminal 2: npm run electron:dev
+(In App: Backend auf "whisper.cpp" umstellen!)
+
+NUR WHISPER PYTHON (Original):
+-------------------------------
 Terminal 1: python simple_server.py --port 9090 --model base
 Terminal 2: npm run electron:dev
+(In App: Backend auf "Whisper Python" umstellen!)
 
-NUR MOONSHINE (Schneller):
---------------------------
+NUR MOONSHINE (5-15x Schneller):
+---------------------------------
 Terminal 1: python moonshine_server.py --port 9091 --model moonshine/base
 Terminal 2: npm run electron:dev
 (In App: Backend auf "Moonshine" umstellen!)
 
-WHISPER MODELLE (Port 9090):
-----------------------------
+BACKEND ÜBERSICHT:
+-----------------
+🚀 whisper.cpp (Port 9092) - C++ optimiert, GGML quantisierte Modelle
+🌙 Moonshine (Port 9091) - ONNX, 5-15x schneller als Whisper
+🎤 Whisper Python (Port 9090) - Original OpenAI Whisper
+
+WHISPER.CPP MODELLE (Port 9092):
+--------------------------------
 - tiny-q5_1      (16 MB) - Quantisiert, sehr schnell
-- base-q5_1      (31 MB) - Quantisiert, gute Performance
-- base           (74 MB) - Gute Qualität
-- small          (244 MB) - Bessere Qualität
-- medium         (769 MB) - Hohe Qualität
+- base-q5_1      (31 MB) - Quantisiert, gute Performance [DEFAULT]
+- base           (147 MB) - Gute Qualität
+- small-q5_1     (78 MB) - Quantisiert, bessere Qualität
+- medium-q5_1    (245 MB) - Quantisiert, hohe Qualität
 
 MOONSHINE MODELLE (Port 9091):
 ------------------------------
@@ -58,30 +93,56 @@ MOONSHINE MODELLE (Port 9091):
 
 PERFORMANCE VERGLEICH:
 ----------------------
+🚀 whisper.cpp: C++ optimiert, quantisierte Modelle
+   - base-q5_1: ~8-10x Echtzeit-Faktor
+   - tiny-q5_1: ~15x Echtzeit-Faktor
+
 🌙 Moonshine: 5-15x schneller als Whisper!
    - Tiny: ~27x Echtzeit-Faktor
    - Base: ~28x Echtzeit-Faktor
 
-🎤 Whisper:
+🎤 Whisper Python (Original):
    - Tiny: ~10x Echtzeit-Faktor
    - Base: ~5x Echtzeit-Faktor
 
-MOONSHINE INSTALLATION (falls nicht installiert):
--------------------------------------------------
-pip install useful-moonshine-onnx
+INSTALLATION:
+-------------
+Moonshine (falls nicht installiert):
+  pip install useful-moonshine-onnx
+
+Whisper.cpp Python Bindings:
+  pip install pywhispercpp
+
+Whisper Python (Original):
+  pip install websockets numpy faster-whisper
 
 PROBLEME?
 ---------
 - Port belegt? 
-  -> Get-Process python | Stop-Process -Force
+  -> Get-Process python,electron,node -ErrorAction SilentlyContinue | Stop-Process -Force
 
 - Moonshine nicht verfügbar?
   -> pip install useful-moonshine-onnx
 
-- Whisper nicht verfügbar?
+- Whisper.cpp nicht verfügbar?
+  -> pip install pywhispercpp
+
+- Whisper Python nicht verfügbar?
   -> pip install websockets numpy faster-whisper
 
 - App startet nicht?
   -> npm install
+  -> npm run build
+
+- Backends starten nicht in Electron?
+  -> Prüfe dass Python-Scripts vorhanden sind
+  -> Prüfe Console-Output in Electron
+
+SCHNELLSTART:
+------------
+cd C:\Users\49152\projects\whisper.cpp-1\subtitles-for-all
+npx electron .
+
+Fertig! Alle Backends starten automatisch.
 
 ===============================================

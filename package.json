@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "start": "npm run build && electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "npm run build && electron-builder",
     "preview": "vite preview"
@@ -44,6 +45,20 @@
     "files": [
       "dist/**/*",
       "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "simple_server.py",
+        "to": "app.asar.unpacked/simple_server.py"
+      },
+      {
+        "from": "moonshine_server.py",
+        "to": "app.asar.unpacked/moonshine_server.py"
+      },
+      {
+        "from": "whispercpp_server.py",
+        "to": "app.asar.unpacked/whispercpp_server.py"
+      }
     ],
     "win": {
       "target": "nsis"

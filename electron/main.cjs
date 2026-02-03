@@ -1,10 +1,131 @@
 const { app, BrowserWindow, ipcMain, desktopCapturer, screen } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
+const fs = require('fs');
 
 let settingsWindow = null;
 let overlayWindow = null;
+let backendProcesses = [];
 
 const isDev = process.env.NODE_ENV === 'development';
+
+// Get the correct app directory
+function getAppDir() {
+  // app.getAppPath() returns the path to the app's main file directory
+  // In development this is the subtitles-for-all folder
+  // In production this might be inside an asar archive
+  let appDir = app.getAppPath();
+  
+  // If we're in an asar archive, get the unpacked directory
+  if (appDir.includes('app.asar')) {
+    appDir = path.dirname(appDir);
+  }
+  
+  console.log('[Electron] App directory:', appDir);
+  return appDir;
+}
+
+// Backend server configurations
+const BACKENDS = [
+  {
+    name: 'Whisper.cpp',
+    script: 'whispercpp_server.py',
+    port: 9092,
+    args: ['--model', 'base-q5_1'],
+    enabled: true,
+  },
+  {
+    name: 'Moonshine',
+    script: 'moonshine_server.py', 
+    port: 9091,
+    args: [],
+    enabled: true,
+  },
+  {
+    name: 'Whisper Python',
+    script: 'simple_server.py',
+    port: 9090,
+    args: ['--model', 'base'],
+    enabled: true, // Enable all backends for testing
+  },
+];
+
+function getServerPath() {
+  const appDir = getAppDir();
+  console.log('[Electron] Server path:', appDir);
+  return appDir;
+}
+
+function startBackendServers() {
+  const serverPath = getServerPath();
+  console.log('[Electron] Starting backend servers from:', serverPath);
+  
+  BACKENDS.filter(b => b.enabled).forEach(backend => {
+    const scriptPath = path.join(serverPath, backend.script);
+    
+    // Check if script exists
+    if (!fs.existsSync(scriptPath)) {
+      console.error(`[Electron] Script not found: ${scriptPath}`);
+      return;
+    }
+    
+    console.log(`[Electron] Starting ${backend.name} on port ${backend.port}...`);
+    console.log(`[Electron] Script: ${scriptPath}`);
+    
+    try {
+      // Use PYTHONIOENCODING to fix Unicode issues on Windows
+      const env = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' };
+      
+      const proc = spawn('python', [scriptPath, ...backend.args], {
+        cwd: serverPath,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: false,
+        windowsHide: true,
+        env: env,
+      });
+      
+      proc.stdout.on('data', (data) => {
+        const output = data.toString().trim();
+        if (output) console.log(`[${backend.name}] ${output}`);
+      });
+      
+      proc.stderr.on('data', (data) => {
+        const output = data.toString().trim();
+        if (output) console.error(`[${backend.name}] ${output}`);
+      });
+      
+      proc.on('error', (err) => {
+        console.error(`[${backend.name}] Failed to start:`, err.message);
+      });
+      
+      proc.on('exit', (code) => {
+        if (code !== 0 && code !== null) {
+          console.log(`[${backend.name}] Exited with code ${code}`);
+        }
+      });
+      
+      backendProcesses.push({ name: backend.name, process: proc, port: backend.port });
+      console.log(`[Electron] ${backend.name} started (PID: ${proc.pid})`);
+    } catch (err) {
+      console.error(`[Electron] Failed to start ${backend.name}:`, err.message);
+    }
+  });
+}
+
+function stopBackendServers() {
+  console.log('[Electron] Stopping backend servers...');
+  backendProcesses.forEach(({ name, process }) => {
+    try {
+      if (process && !process.killed) {
+        process.kill('SIGTERM');
+        console.log(`[Electron] Stopped ${name}`);
+      }
+    } catch (err) {
+      console.error(`[Electron] Error stopping ${name}:`, err.message);
+    }
+  });
+  backendProcesses = [];
+}
 
 function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
@@ -89,8 +210,14 @@ function createOverlayWindow() {
 app.commandLine.appendSwitch('enable-features', 'ScreenCaptureKitPicker');
 
 app.whenReady().then(() => {
-  createSettingsWindow();
-  createOverlayWindow();
+  // Start backend servers first
+  startBackendServers();
+  
+  // Wait a bit for servers to initialize, then create windows
+  setTimeout(() => {
+    createSettingsWindow();
+    createOverlayWindow();
+  }, 2000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -101,9 +228,14 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  stopBackendServers();
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  stopBackendServers();
 });
 
 // IPC Handlers

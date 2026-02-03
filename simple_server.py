@@ -1,4 +1,4 @@
-"""
+﻿"""
 Simple Python WebSocket Server for SubtitlesForAll
 This version uses faster-whisper for real-time transcription
 """
@@ -150,7 +150,7 @@ class SimpleTranscriptionServer:
         print(f"{'='*50}\n")
         
         async with websockets.serve(self.handle_client, self.host, self.port):
-            print(f"✓ Server running on ws://{self.host}:{self.port}")
+            print(f"âœ“ Server running on ws://{self.host}:{self.port}")
             print("Waiting for connections...\n")
             await asyncio.Future()  # Run forever
 
@@ -180,3 +180,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
