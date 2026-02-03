@@ -2,58 +2,86 @@
   SubtitlesForAll - Start Anleitung
 ===============================================
 
-SO STARTEST DU DIE ANWENDUNG:
------------------------------
+BEIDE BACKENDS STARTEN (Empfohlen):
+-----------------------------------
 
-1. Öffne 2 PowerShell/Terminal Fenster
+1. Öffne 3 PowerShell/Terminal Fenster
 
-2. TERMINAL 1 - Server starten:
+2. TERMINAL 1 - Whisper Server (Port 9090):
    cd C:\Users\49152\projects\whisper.cpp-1\subtitles-for-all
    python simple_server.py --port 9090 --model base
 
-3. TERMINAL 2 - App starten:
+3. TERMINAL 2 - Moonshine Server (Port 9091):
+   cd C:\Users\49152\projects\whisper.cpp-1\subtitles-for-all
+   python moonshine_server.py --port 9091 --model moonshine/base
+
+4. TERMINAL 3 - App starten:
    cd C:\Users\49152\projects\whisper.cpp-1\subtitles-for-all
    npm run electron:dev
 
-4. In der App:
+5. In der App:
+   - Wähle Backend: 🌙 Moonshine (5-15x schneller!) oder 🎤 Whisper
    - Klicke "Start Capture"
    - Wähle Audio-Quelle (z.B. Desktop Audio)
-   - Wähle Modell aus Dropdown:
-     * ⚡ Tiny Q5_1 (16 MB) - Schnellste
-     * ⚡ Base Q5_1 (31 MB) - Gute Balance
-     * base (74 MB) - Beste Qualität
+   - Wähle Modell aus Dropdown
 
-VERFÜGBARE MODELLE:
--------------------
+NUR WHISPER (Original):
+-----------------------
+Terminal 1: python simple_server.py --port 9090 --model base
+Terminal 2: npm run electron:dev
+
+NUR MOONSHINE (Schneller):
+--------------------------
+Terminal 1: python moonshine_server.py --port 9091 --model moonshine/base
+Terminal 2: npm run electron:dev
+(In App: Backend auf "Moonshine" umstellen!)
+
+WHISPER MODELLE (Port 9090):
+----------------------------
 - tiny-q5_1      (16 MB) - Quantisiert, sehr schnell
-- tiny           (39 MB) - Schnell
 - base-q5_1      (31 MB) - Quantisiert, gute Performance
 - base           (74 MB) - Gute Qualität
 - small          (244 MB) - Bessere Qualität
 - medium         (769 MB) - Hohe Qualität
 
-MODELL IM TERMINAL ÄNDERN:
---------------------------
-python simple_server.py --port 9090 --model tiny-q5_1
-python simple_server.py --port 9090 --model base-q5_1
-python simple_server.py --port 9090 --model base
+MOONSHINE MODELLE (Port 9091):
+------------------------------
+- moonshine/tiny     (27 MB) - Ultra-schnell, Englisch
+- moonshine/base     (62 MB) - Schnell, beste Qualität, Englisch
+- moonshine/tiny-ar  (27 MB) - Arabisch
+- moonshine/tiny-zh  (27 MB) - Chinesisch
+- moonshine/tiny-ja  (27 MB) - Japanisch
+- moonshine/tiny-ko  (27 MB) - Koreanisch
+- moonshine/tiny-uk  (27 MB) - Ukrainisch
+- moonshine/tiny-vi  (27 MB) - Vietnamesisch
+- moonshine/base-es  (62 MB) - Spanisch
+
+PERFORMANCE VERGLEICH:
+----------------------
+🌙 Moonshine: 5-15x schneller als Whisper!
+   - Tiny: ~27x Echtzeit-Faktor
+   - Base: ~28x Echtzeit-Faktor
+
+🎤 Whisper:
+   - Tiny: ~10x Echtzeit-Faktor
+   - Base: ~5x Echtzeit-Faktor
+
+MOONSHINE INSTALLATION (falls nicht installiert):
+-------------------------------------------------
+pip install useful-moonshine-onnx
 
 PROBLEME?
 ---------
-- Port 9090 belegt? 
-  -> Prozess beenden: Get-Process python | Stop-Process -Force
+- Port belegt? 
+  -> Get-Process python | Stop-Process -Force
 
-- Server startet nicht?
-  -> Pakete installieren: pip install websockets numpy faster-whisper
+- Moonshine nicht verfügbar?
+  -> pip install useful-moonshine-onnx
+
+- Whisper nicht verfügbar?
+  -> pip install websockets numpy faster-whisper
 
 - App startet nicht?
-  -> Dependencies: npm install
-
-VAD (Voice Activity Detection):
--------------------------------
-✓ Ist bereits aktiviert!
-- Filtert Stille automatisch
-- Bessere Transkription
-- Keine Änderung nötig
+  -> npm install
 
 ===============================================

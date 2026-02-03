@@ -4,13 +4,16 @@ import SettingsPanel from './components/SettingsPanel';
 import { OverlaySettings, CaptureState, ConnectionStatus } from './types';
 import { translations, Language } from './i18n';
 
+// Backend types
+type BackendType = 'whisper' | 'moonshine';
+
 function App() {
   // State
   const [captureState, setCaptureState] = useState<CaptureState>('idle');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [serverUrl] = useState('ws://localhost:9090'); // Fixed URL
+  const [selectedBackend, setSelectedBackend] = useState<BackendType>('whisper');
   const [uiLanguage, setUiLanguage] = useState<Language>('en');
   const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto');
   const [selectedModel, setSelectedModel] = useState('base.en');
@@ -24,6 +27,9 @@ function App() {
     position: 'bottom',
     maxLines: 2,
   });
+
+  // Server URLs based on backend
+  const serverUrl = selectedBackend === 'whisper' ? 'ws://localhost:9090' : 'ws://localhost:9091';
 
   // Translation function
   const t = translations[uiLanguage];
@@ -48,6 +54,15 @@ function App() {
       window.electronAPI.updateOverlaySettings(overlaySettings);
     }
   }, [overlaySettings]);
+
+  // Reset model when backend changes
+  useEffect(() => {
+    if (selectedBackend === 'moonshine') {
+      setSelectedModel('moonshine/base');
+    } else {
+      setSelectedModel('base.en');
+    }
+  }, [selectedBackend]);
 
   // Handle model change while connected
   useEffect(() => {
@@ -356,29 +371,86 @@ function App() {
           </div>
         </div>
 
+        {/* Backend Selection */}
+        <div className="panel">
+          <h3 className="panel-title">🚀 {uiLanguage === 'en' ? 'Speech Engine' : 'Sprach-Engine'}</h3>
+          <div className="status-row">
+            <span className="status-label">{uiLanguage === 'en' ? 'Backend' : 'Backend'}</span>
+            <select
+              value={selectedBackend}
+              onChange={(e) => setSelectedBackend(e.target.value as BackendType)}
+              disabled={captureState === 'capturing'}
+              style={{ padding: '4px 8px', borderRadius: '4px' }}
+            >
+              <option value="whisper">🎤 Whisper - {uiLanguage === 'en' ? 'Reliable, many models' : 'Zuverlässig, viele Modelle'}</option>
+              <option value="moonshine">🌙 Moonshine - {uiLanguage === 'en' ? '5-15x FASTER!' : '5-15x SCHNELLER!'}</option>
+            </select>
+          </div>
+          <div style={{ 
+            marginTop: '8px', 
+            fontSize: '12px', 
+            color: selectedBackend === 'moonshine' ? '#4ade80' : '#888',
+            padding: '8px',
+            backgroundColor: selectedBackend === 'moonshine' ? 'rgba(74, 222, 128, 0.1)' : 'transparent',
+            borderRadius: '4px'
+          }}>
+            {selectedBackend === 'moonshine' 
+              ? (uiLanguage === 'en' 
+                  ? '⚡ Moonshine processes audio 5-15x faster than Whisper!' 
+                  : '⚡ Moonshine verarbeitet Audio 5-15x schneller als Whisper!')
+              : (uiLanguage === 'en'
+                  ? 'Whisper offers many model sizes and languages'
+                  : 'Whisper bietet viele Modellgrößen und Sprachen')}
+          </div>
+          <div style={{ marginTop: '8px', fontSize: '11px', color: '#666' }}>
+            {uiLanguage === 'en' 
+              ? `Server: ${serverUrl}` 
+              : `Server: ${serverUrl}`}
+          </div>
+        </div>
+
         {/* Model Selection */}
         <div className="panel">
           <h3 className="panel-title">🤖 {t.settings.model}</h3>
           <div className="status-row">
             <span className="status-label">{t.settings.model}</span>
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              disabled={captureState === 'capturing' || modelLoading}
-              style={{ padding: '4px 8px', borderRadius: '4px' }}
-            >
-              <option value="tiny-q5_1">⚡ Tiny Q5_1 (16 MB) - {uiLanguage === 'en' ? 'Quantized, very fast, multilingual' : 'Quantisiert, sehr schnell, mehrsprachig'}</option>
-              <option value="tiny.en">Tiny.en (39 MB) - {uiLanguage === 'en' ? 'Fastest, English only' : 'Am schnellsten, nur Englisch'}</option>
-              <option value="tiny">Tiny (39 MB) - {uiLanguage === 'en' ? 'Fast, multilingual' : 'Schnell, mehrsprachig'}</option>
-              <option value="base-q5_1">⚡ Base Q5_1 (31 MB) - {uiLanguage === 'en' ? 'Quantized, faster, multilingual' : 'Quantisiert, schneller, mehrsprachig'}</option>
-              <option value="base.en">Base.en (74 MB) - {uiLanguage === 'en' ? 'Good quality, English only' : 'Gute Qualität, nur Englisch'}</option>
-              <option value="base">Base (74 MB) - {uiLanguage === 'en' ? 'Good quality, multilingual' : 'Gute Qualität, mehrsprachig'}</option>
-              <option value="small.en">Small.en (244 MB) - {uiLanguage === 'en' ? 'Better quality, English only' : 'Bessere Qualität, nur Englisch'}</option>
-              <option value="small">Small (244 MB) - {uiLanguage === 'en' ? 'Better quality, multilingual' : 'Bessere Qualität, mehrsprachig'}</option>
-              <option value="medium.en">Medium.en (769 MB) - {uiLanguage === 'en' ? 'High quality, English only' : 'Hohe Qualität, nur Englisch'}</option>
-              <option value="medium">Medium (769 MB) - {uiLanguage === 'en' ? 'High quality, multilingual' : 'Hohe Qualität, mehrsprachig'}</option>
-              <option value="large-v3">Large-v3 (1550 MB) - {uiLanguage === 'en' ? 'Best quality, multilingual' : 'Beste Qualität, mehrsprachig'}</option>
-            </select>
+            {selectedBackend === 'whisper' ? (
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                disabled={captureState === 'capturing' || modelLoading}
+                style={{ padding: '4px 8px', borderRadius: '4px' }}
+              >
+                <option value="tiny-q5_1">⚡ Tiny Q5_1 (16 MB) - {uiLanguage === 'en' ? 'Quantized, very fast' : 'Quantisiert, sehr schnell'}</option>
+                <option value="tiny.en">Tiny.en (39 MB) - {uiLanguage === 'en' ? 'Fast, English only' : 'Schnell, nur Englisch'}</option>
+                <option value="tiny">Tiny (39 MB) - {uiLanguage === 'en' ? 'Fast, multilingual' : 'Schnell, mehrsprachig'}</option>
+                <option value="base-q5_1">⚡ Base Q5_1 (31 MB) - {uiLanguage === 'en' ? 'Quantized, faster' : 'Quantisiert, schneller'}</option>
+                <option value="base.en">Base.en (74 MB) - {uiLanguage === 'en' ? 'Good quality, English' : 'Gute Qualität, Englisch'}</option>
+                <option value="base">Base (74 MB) - {uiLanguage === 'en' ? 'Good quality, multilingual' : 'Gute Qualität, mehrsprachig'}</option>
+                <option value="small.en">Small.en (244 MB) - {uiLanguage === 'en' ? 'Better quality, English' : 'Bessere Qualität, Englisch'}</option>
+                <option value="small">Small (244 MB) - {uiLanguage === 'en' ? 'Better quality, multilingual' : 'Bessere Qualität, mehrsprachig'}</option>
+                <option value="medium.en">Medium.en (769 MB) - {uiLanguage === 'en' ? 'High quality, English' : 'Hohe Qualität, Englisch'}</option>
+                <option value="medium">Medium (769 MB) - {uiLanguage === 'en' ? 'High quality, multilingual' : 'Hohe Qualität, mehrsprachig'}</option>
+                <option value="large-v3">Large-v3 (1550 MB) - {uiLanguage === 'en' ? 'Best quality' : 'Beste Qualität'}</option>
+              </select>
+            ) : (
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                disabled={captureState === 'capturing' || modelLoading}
+                style={{ padding: '4px 8px', borderRadius: '4px' }}
+              >
+                <option value="moonshine/tiny">🌙 Tiny (27 MB) - {uiLanguage === 'en' ? 'Ultra-fast, English' : 'Ultra-schnell, Englisch'}</option>
+                <option value="moonshine/base">🌙 Base (62 MB) - {uiLanguage === 'en' ? 'Best quality, English' : 'Beste Qualität, Englisch'}</option>
+                <option value="moonshine/tiny-ar">🌙 Tiny-AR (27 MB) - {uiLanguage === 'en' ? 'Arabic' : 'Arabisch'}</option>
+                <option value="moonshine/tiny-zh">🌙 Tiny-ZH (27 MB) - {uiLanguage === 'en' ? 'Chinese' : 'Chinesisch'}</option>
+                <option value="moonshine/tiny-ja">🌙 Tiny-JA (27 MB) - {uiLanguage === 'en' ? 'Japanese' : 'Japanisch'}</option>
+                <option value="moonshine/tiny-ko">🌙 Tiny-KO (27 MB) - {uiLanguage === 'en' ? 'Korean' : 'Koreanisch'}</option>
+                <option value="moonshine/tiny-uk">🌙 Tiny-UK (27 MB) - {uiLanguage === 'en' ? 'Ukrainian' : 'Ukrainisch'}</option>
+                <option value="moonshine/tiny-vi">🌙 Tiny-VI (27 MB) - {uiLanguage === 'en' ? 'Vietnamese' : 'Vietnamesisch'}</option>
+                <option value="moonshine/base-es">🌙 Base-ES (62 MB) - {uiLanguage === 'en' ? 'Spanish' : 'Spanisch'}</option>
+              </select>
+            )}
           </div>
           {modelLoading && (
             <div style={{ marginTop: '12px' }}>
