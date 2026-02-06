@@ -917,6 +917,12 @@ struct whisper_state {
     ggml_tensor * aheads_cross_QKs = nullptr;
     std::vector<float> aheads_cross_QKs_data;
 
+    // [EXPERIMENTAL] SimulStreaming AlignAtt - cross-attention for streaming policy
+    std::vector<float> cross_attention_weights;  // Stored cross-attention weights [n_tokens x n_audio_ctx]
+    int cross_attention_n_tokens = 0;            // Number of tokens in current cross_attention_weights
+    int cross_attention_n_frames = 0;            // Number of audio frames (n_audio_ctx)
+    bool store_cross_attention = false;          // Flag to enable cross-attention storage
+
     // [EXPERIMENTAL] speed-up techniques
     int32_t exp_n_audio_ctx = 0; // 0 - use default
 
@@ -949,6 +955,30 @@ struct whisper_context {
     whisper_state * state = nullptr;
 
     std::string path_model; // populated by whisper_init_from_file_with_params()
+};
+
+// [EXPERIMENTAL] SimulStreaming context for incremental audio processing
+struct whisper_streaming_context {
+    whisper_context * ctx = nullptr;
+    whisper_state * state = nullptr;
+    whisper_streaming_params params;
+
+    // Audio buffer for streaming
+    std::vector<float> audio_buffer;
+    int64_t total_samples_processed = 0;
+    int64_t audio_offset_samples = 0;
+
+    // Context preservation
+    std::vector<whisper_token> context_tokens;
+
+    // Finalized segments
+    std::vector<whisper_segment> finalized_segments;
+
+    // Partial transcription buffer
+    std::string partial_text;
+
+    // State flags
+    bool is_finalized = false;
 };
 
 struct whisper_global {
@@ -2735,6 +2765,16 @@ static struct ggml_cgraph * whisper_build_graph_decoder(
                     }
                 }
 
+                // [EXPERIMENTAL] SimulStreaming AlignAtt - store cross-attention from last layer
+                // We store the attention weights so AlignAtt policy can determine when to stop decoding
+                if (wctx.params.store_cross_attention && il == n_layer - 1) {
+                    // Store KQ_soft_max for AlignAtt policy
+                    // Shape: [n_audio_ctx, n_head, n_tokens]
+                    struct ggml_tensor * alignatt_attn = ggml_cont(ctx0, KQ_soft_max);
+                    ggml_set_name(alignatt_attn, "alignatt_cross_attn");
+                    ggml_build_forward_expand(gf, alignatt_attn);
+                }
+
                 struct ggml_tensor * KQV = ggml_mul_mat(ctx0, Vcross, KQ_soft_max);
 
                 struct ggml_tensor * KQV_merged = ggml_permute(ctx0, KQV, 0, 2, 1, 3);
@@ -2952,6 +2992,38 @@ static bool whisper_decode_internal(
             continue;
         }
         ggml_backend_tensor_get(logits, logits_out.data() + (n_vocab*i), sizeof(float)*(n_vocab*i), sizeof(float)*n_vocab);
+    }
+
+    // [EXPERIMENTAL] SimulStreaming AlignAtt - extract cross-attention weights
+    if (wctx.params.store_cross_attention) {
+        struct ggml_tensor * alignatt_attn = ggml_graph_get_tensor(gf, "alignatt_cross_attn");
+        if (alignatt_attn != nullptr) {
+            const int n_audio_ctx = wstate.exp_n_audio_ctx > 0 ? wstate.exp_n_audio_ctx : hparams.n_audio_ctx;
+            const int n_head = hparams.n_text_head;
+
+            // Store cross-attention weights averaged over all heads
+            // Shape after averaging: [n_tokens, n_audio_ctx]
+            const size_t n_elements = n_tokens * n_audio_ctx;
+            wstate.cross_attention_weights.resize(n_elements);
+            wstate.cross_attention_n_tokens = n_tokens;
+            wstate.cross_attention_n_frames = n_audio_ctx;
+
+            // Get raw data from tensor [n_audio_ctx, n_head, n_tokens]
+            std::vector<float> raw_attention(n_audio_ctx * n_head * n_tokens);
+            ggml_backend_tensor_get(alignatt_attn, raw_attention.data(), 0, raw_attention.size() * sizeof(float));
+
+            // Average over heads and reshape to [n_tokens, n_audio_ctx]
+            for (int t = 0; t < n_tokens; ++t) {
+                for (int f = 0; f < n_audio_ctx; ++f) {
+                    float sum = 0.0f;
+                    for (int h = 0; h < n_head; ++h) {
+                        // Index: f + n_audio_ctx * (h + n_head * t)
+                        sum += raw_attention[f + n_audio_ctx * (h + n_head * t)];
+                    }
+                    wstate.cross_attention_weights[t * n_audio_ctx + f] = sum / n_head;
+                }
+            }
+        }
     }
 
     if (batch.n_tokens > 1) {
@@ -3617,6 +3689,8 @@ struct whisper_context_params whisper_context_default_params() {
             /*.heads            =*/ NULL,
         },
         /*.dtw_mem_size         =*/ 1024*1024*128,
+
+        /*.store_cross_attention=*/ false,
     };
     return result;
 }
@@ -4443,6 +4517,31 @@ struct whisper_vad_params whisper_vad_default_params(void) {
         /* max_speech_duration_s   = */ FLT_MAX,
         /* speech_pad_ms           = */ 30,
         /* samples_overlap         = */ 0.1,
+    };
+    return result;
+}
+
+// [EXPERIMENTAL] SimulStreaming AlignAtt default parameters
+struct whisper_alignatt_params whisper_alignatt_default_params(void) {
+    whisper_alignatt_params result = {
+        /* enabled          = */ false,
+        /* frame_threshold  = */ 25,      // 250ms from audio end (1 frame = 10ms)
+        /* min_tokens       = */ 1,       // Minimum tokens before AlignAtt check
+        /* attention_layer  = */ -1,      // Last layer
+        /* attention_head   = */ -1,      // Average all heads
+        /* store_attention  = */ false,
+    };
+    return result;
+}
+
+// [EXPERIMENTAL] SimulStreaming default parameters
+struct whisper_streaming_params whisper_streaming_default_params(void) {
+    whisper_streaming_params result = {
+        /* alignatt         = */ whisper_alignatt_default_params(),
+        /* chunk_ms         = */ 1000,    // 1 second chunks
+        /* context_tokens   = */ 224,     // Half of n_text_ctx
+        /* vad_threshold    = */ 0.5f,
+        /* use_vad          = */ false,
     };
     return result;
 }
@@ -5468,6 +5567,223 @@ void whisper_vad_free_segments(whisper_vad_segments * segments) {
 }
 
 //////////////////////////////////
+// SimulStreaming AlignAtt - Streaming optimization using cross-attention
+//////////////////////////////////
+
+// Get the current attention focus position (frame index with max attention)
+// Returns the frame index where the model's attention is focused for the last token
+int whisper_alignatt_get_attention_pos(struct whisper_state * state, struct whisper_alignatt_params params) {
+    if (state == nullptr || state->cross_attention_weights.empty()) {
+        return -1;
+    }
+
+    const int n_tokens = state->cross_attention_n_tokens;
+    const int n_frames = state->cross_attention_n_frames;
+
+    if (n_tokens <= 0 || n_frames <= 0) {
+        return -1;
+    }
+
+    // Get attention for the last token
+    const int last_token_idx = n_tokens - 1;
+    const float * attn = state->cross_attention_weights.data() + last_token_idx * n_frames;
+
+    // Find the frame with maximum attention
+    int max_frame = 0;
+    float max_attn = attn[0];
+    for (int f = 1; f < n_frames; ++f) {
+        if (attn[f] > max_attn) {
+            max_attn = attn[f];
+            max_frame = f;
+        }
+    }
+
+    return max_frame;
+}
+
+// Check if streaming should stop decoding based on AlignAtt policy
+// Returns true if attention is too close to audio boundary (within frame_threshold frames)
+bool whisper_alignatt_should_stop(struct whisper_state * state, struct whisper_alignatt_params params, int n_audio_frames) {
+    if (!params.enabled || state == nullptr) {
+        return false;
+    }
+
+    const int n_tokens = state->cross_attention_n_tokens;
+
+    // Don't stop if we haven't decoded enough tokens
+    if (n_tokens < params.min_tokens) {
+        return false;
+    }
+
+    const int attn_pos = whisper_alignatt_get_attention_pos(state, params);
+    if (attn_pos < 0) {
+        return false;
+    }
+
+    // Calculate the boundary threshold
+    // If attention is within frame_threshold frames from the end, stop decoding
+    const int boundary = n_audio_frames - params.frame_threshold;
+
+    // AlignAtt policy: stop if attention position >= boundary
+    return attn_pos >= boundary;
+}
+
+//////////////////////////////////
+// SimulStreaming Context Management
+//////////////////////////////////
+
+struct whisper_streaming_context * whisper_streaming_init(
+        struct whisper_context * ctx,
+        struct whisper_streaming_params params) {
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+
+    whisper_streaming_context * sctx = new whisper_streaming_context();
+    sctx->ctx = ctx;
+    sctx->params = params;
+
+    // Initialize state with cross-attention storage enabled
+    if (params.alignatt.enabled) {
+        ctx->params.store_cross_attention = true;
+    }
+
+    sctx->state = whisper_init_state(ctx);
+    if (sctx->state == nullptr) {
+        delete sctx;
+        return nullptr;
+    }
+
+    sctx->state->store_cross_attention = params.alignatt.enabled || params.alignatt.store_attention;
+
+    return sctx;
+}
+
+int whisper_streaming_insert_audio(
+        struct whisper_streaming_context * sctx,
+        const float * samples,
+        int n_samples) {
+    if (sctx == nullptr || samples == nullptr || n_samples <= 0) {
+        return 0;
+    }
+
+    // Append samples to audio buffer
+    sctx->audio_buffer.insert(sctx->audio_buffer.end(), samples, samples + n_samples);
+    return n_samples;
+}
+
+int whisper_streaming_process(
+        struct whisper_streaming_context * sctx,
+        struct whisper_full_params params) {
+    if (sctx == nullptr || sctx->ctx == nullptr || sctx->state == nullptr) {
+        return -1;
+    }
+
+    // Check if we have enough audio to process (at least chunk_ms worth)
+    const int min_samples = (sctx->params.chunk_ms * WHISPER_SAMPLE_RATE) / 1000;
+    if ((int)sctx->audio_buffer.size() < min_samples) {
+        return 0; // Not enough audio yet
+    }
+
+    // Enable AlignAtt in params if configured
+    if (sctx->params.alignatt.enabled) {
+        params.alignatt = sctx->params.alignatt;
+    }
+
+    // Process audio
+    const int n_samples = sctx->audio_buffer.size();
+    int result = whisper_full_with_state(
+        sctx->ctx, sctx->state, params,
+        sctx->audio_buffer.data(), n_samples);
+
+    if (result != 0) {
+        return result;
+    }
+
+    // Move finalized segments to our storage
+    const int n_segments = whisper_full_n_segments_from_state(sctx->state);
+    for (int i = 0; i < n_segments; ++i) {
+        whisper_segment seg;
+        seg.t0 = whisper_full_get_segment_t0_from_state(sctx->state, i) + 
+                 (sctx->total_samples_processed * 100 / WHISPER_SAMPLE_RATE); // Convert to centiseconds
+        seg.t1 = whisper_full_get_segment_t1_from_state(sctx->state, i) +
+                 (sctx->total_samples_processed * 100 / WHISPER_SAMPLE_RATE);
+        seg.text = whisper_full_get_segment_text_from_state(sctx->state, i);
+        sctx->finalized_segments.push_back(seg);
+    }
+
+    // Update tracking
+    sctx->total_samples_processed += n_samples;
+
+    // Clear audio buffer (in a real implementation, we'd keep some overlap)
+    sctx->audio_buffer.clear();
+
+    return 0;
+}
+
+int whisper_streaming_n_segments(struct whisper_streaming_context * sctx) {
+    if (sctx == nullptr) {
+        return 0;
+    }
+    return sctx->finalized_segments.size();
+}
+
+const char * whisper_streaming_get_segment_text(struct whisper_streaming_context * sctx, int i_segment) {
+    if (sctx == nullptr || i_segment < 0 || i_segment >= (int)sctx->finalized_segments.size()) {
+        return nullptr;
+    }
+    return sctx->finalized_segments[i_segment].text.c_str();
+}
+
+int64_t whisper_streaming_get_segment_t0(struct whisper_streaming_context * sctx, int i_segment) {
+    if (sctx == nullptr || i_segment < 0 || i_segment >= (int)sctx->finalized_segments.size()) {
+        return 0;
+    }
+    return sctx->finalized_segments[i_segment].t0;
+}
+
+int64_t whisper_streaming_get_segment_t1(struct whisper_streaming_context * sctx, int i_segment) {
+    if (sctx == nullptr || i_segment < 0 || i_segment >= (int)sctx->finalized_segments.size()) {
+        return 0;
+    }
+    return sctx->finalized_segments[i_segment].t1;
+}
+
+const char * whisper_streaming_get_partial(struct whisper_streaming_context * sctx) {
+    if (sctx == nullptr) {
+        return nullptr;
+    }
+    return sctx->partial_text.c_str();
+}
+
+int whisper_streaming_finalize(struct whisper_streaming_context * sctx) {
+    if (sctx == nullptr) {
+        return -1;
+    }
+
+    // Process any remaining audio
+    if (!sctx->audio_buffer.empty()) {
+        whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+        int result = whisper_streaming_process(sctx, params);
+        if (result != 0) {
+            return result;
+        }
+    }
+
+    sctx->is_finalized = true;
+    return 0;
+}
+
+void whisper_streaming_free(struct whisper_streaming_context * sctx) {
+    if (sctx != nullptr) {
+        if (sctx->state != nullptr) {
+            whisper_free_state(sctx->state);
+        }
+        delete sctx;
+    }
+}
+
+//////////////////////////////////
 // Grammar - ported from llama.cpp
 //////////////////////////////////
 
@@ -5989,6 +6305,8 @@ struct whisper_full_params whisper_full_default_params(enum whisper_sampling_str
         /*.vad_model_path              =*/ nullptr,
 
         /* vad_params =*/ whisper_vad_default_params(),
+
+        /* alignatt =*/ whisper_alignatt_default_params(),
     };
 
     switch (strategy) {
@@ -7471,6 +7789,28 @@ int whisper_full_with_state(
                     if (!whisper_decode_internal(*ctx, *state, state->batch, params.n_threads, false, params.abort_callback, params.abort_callback_user_data)) {
                         WHISPER_LOG_ERROR("%s: failed to decode\n", __func__);
                         return -9;
+                    }
+
+                    // [EXPERIMENTAL] SimulStreaming AlignAtt - check if we should stop decoding early
+                    // This implements the AlignAtt policy: stop when attention is too close to audio boundary
+                    if (params.alignatt.enabled) {
+                        const int n_audio_ctx = state->exp_n_audio_ctx > 0 ? state->exp_n_audio_ctx : ctx->model.hparams.n_audio_ctx;
+                        if (whisper_alignatt_should_stop(state, params.alignatt, n_audio_ctx)) {
+                            WHISPER_LOG_DEBUG("%s: AlignAtt policy triggered - stopping decode early\n", __func__);
+                            // Mark all active decoders as completed due to AlignAtt policy
+                            for (int j = 0; j < n_decoders_cur; ++j) {
+                                auto & decoder = state->decoders[j];
+                                if (!decoder.failed && !decoder.completed) {
+                                    decoder.completed = true;
+                                    // Set seek_delta based on attention position
+                                    const int attn_pos = whisper_alignatt_get_attention_pos(state, params.alignatt);
+                                    if (attn_pos > 0) {
+                                        // Convert frame position to centiseconds (1 frame = 10ms = 1cs)
+                                        decoder.seek_delta = attn_pos;
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     const int64_t t_start_sample_us = ggml_time_us();

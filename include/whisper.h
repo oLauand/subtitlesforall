@@ -126,6 +126,9 @@ extern "C" {
         struct whisper_aheads dtw_aheads;
 
         size_t dtw_mem_size; // TODO: remove
+
+        // [EXPERIMENTAL] SimulStreaming AlignAtt - store cross-attention for streaming
+        bool store_cross_attention;  // Store cross-attention weights after decode (for AlignAtt)
     };
 
     typedef struct whisper_token_data {
@@ -197,6 +200,87 @@ extern "C" {
         int   speech_pad_ms;           // Padding added before and after speech segments.
         float samples_overlap;         // Overlap in seconds when copying audio samples from speech segment.
     } whisper_vad_params;
+
+    //
+    // [EXPERIMENTAL] SimulStreaming AlignAtt - Streaming optimization using cross-attention
+    // Based on: https://arxiv.org/abs/2309.05096 (Streaming Whisper with Attention-based Policy)
+    //
+
+    typedef struct whisper_alignatt_params {
+        bool   enabled;              // Enable AlignAtt streaming policy
+        int    frame_threshold;      // Frames from audio end before stopping (default: 25 = 250ms)
+        int    min_tokens;           // Minimum tokens before AlignAtt check (default: 1)
+        int    attention_layer;      // Which layer's cross-attention to use (-1 = last layer, default: -1)
+        int    attention_head;       // Which head to use for attention (-1 = average all, default: -1)
+        bool   store_attention;      // Store cross-attention weights for analysis (default: false)
+    } whisper_alignatt_params;
+
+    WHISPER_API struct whisper_alignatt_params whisper_alignatt_default_params(void);
+
+    // SimulStreaming context for incremental audio processing
+    struct whisper_streaming_context;
+
+    typedef struct whisper_streaming_params {
+        struct whisper_alignatt_params alignatt;  // AlignAtt policy parameters
+        int    chunk_ms;                          // Audio chunk size in ms (default: 1000)
+        int    context_tokens;                    // Number of context tokens to preserve (default: 224)
+        float  vad_threshold;                     // VAD threshold for speech detection (default: 0.5)
+        bool   use_vad;                           // Use VAD for speech detection (default: false)
+    } whisper_streaming_params;
+
+    WHISPER_API struct whisper_streaming_params whisper_streaming_default_params(void);
+
+    // Initialize streaming context
+    WHISPER_API struct whisper_streaming_context * whisper_streaming_init(
+            struct whisper_context * ctx,
+            struct whisper_streaming_params params);
+
+    // Insert audio samples into the streaming buffer
+    // Returns the number of samples consumed
+    WHISPER_API int whisper_streaming_insert_audio(
+            struct whisper_streaming_context * sctx,
+            const float * samples,
+            int n_samples);
+
+    // Process buffered audio and generate transcription
+    // Returns 0 on success, negative on error
+    // Call whisper_streaming_get_* functions to retrieve results
+    WHISPER_API int whisper_streaming_process(
+            struct whisper_streaming_context * sctx,
+            struct whisper_full_params params);
+
+    // Get the number of finalized segments from streaming
+    WHISPER_API int whisper_streaming_n_segments(struct whisper_streaming_context * sctx);
+
+    // Get finalized segment text
+    WHISPER_API const char * whisper_streaming_get_segment_text(
+            struct whisper_streaming_context * sctx,
+            int i_segment);
+
+    // Get finalized segment timestamps
+    WHISPER_API int64_t whisper_streaming_get_segment_t0(struct whisper_streaming_context * sctx, int i_segment);
+    WHISPER_API int64_t whisper_streaming_get_segment_t1(struct whisper_streaming_context * sctx, int i_segment);
+
+    // Get partial (in-progress) transcription
+    WHISPER_API const char * whisper_streaming_get_partial(struct whisper_streaming_context * sctx);
+
+    // Check if streaming should stop decoding based on AlignAtt policy
+    // Returns true if attention is too close to audio boundary
+    WHISPER_API bool whisper_alignatt_should_stop(
+            struct whisper_state * state,
+            struct whisper_alignatt_params params,
+            int n_audio_frames);
+
+    // Get the current attention focus position (frame index)
+    WHISPER_API int whisper_alignatt_get_attention_pos(
+            struct whisper_state * state,
+            struct whisper_alignatt_params params);
+
+    // Signal end of audio stream
+    WHISPER_API int whisper_streaming_finalize(struct whisper_streaming_context * sctx);
+
+    // Free streaming context
+    WHISPER_API void whisper_streaming_free(struct whisper_streaming_context * sctx);
 
     WHISPER_API const char * whisper_version(void);
 
@@ -588,6 +672,9 @@ extern "C" {
         const char * vad_model_path;              // Path to VAD model
 
         whisper_vad_params vad_params;
+
+        // [EXPERIMENTAL] SimulStreaming AlignAtt params
+        whisper_alignatt_params alignatt;         // AlignAtt streaming policy parameters
     };
 
     // NOTE: this function allocates memory, and it is the responsibility of the caller to free the pointer - see whisper_free_context_params & whisper_free_params()
