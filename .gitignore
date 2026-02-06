@@ -38,8 +38,14 @@ ENV/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+logs/
 
 # Temporary files
 *.tmp
 *.temp
 .cache/
+
+# External dependencies (too large for GitHub)
+sherpa-ONNX/
+moonshine_backend/
+RealtimeSTT-master/
